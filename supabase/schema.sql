@@ -6,8 +6,27 @@ create table if not exists public.artisan_profiles (
   bio text,
   story text,
   avatar_url text,
+  hero_headline text,
+  hero_subline text,
+  trust_note text,
+  featured_message text,
+  storefront_tone text,
+  shop_avatar_url text,
+  shop_banner_url text,
+  primary_color text,
+  secondary_color text,
   created_at timestamptz not null default now()
 );
+
+alter table public.artisan_profiles add column if not exists hero_headline text;
+alter table public.artisan_profiles add column if not exists hero_subline text;
+alter table public.artisan_profiles add column if not exists trust_note text;
+alter table public.artisan_profiles add column if not exists featured_message text;
+alter table public.artisan_profiles add column if not exists storefront_tone text;
+alter table public.artisan_profiles add column if not exists shop_avatar_url text;
+alter table public.artisan_profiles add column if not exists shop_banner_url text;
+alter table public.artisan_profiles add column if not exists primary_color text;
+alter table public.artisan_profiles add column if not exists secondary_color text;
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
@@ -96,4 +115,48 @@ create policy "Artisans can read own custom requests"
       where ap.id = custom_requests.artisan_id
         and ap.user_id = auth.uid()
     )
+  );
+
+insert into storage.buckets (id, name, public)
+values ('storefront-media', 'storefront-media', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Storefront media is public readable" on storage.objects;
+create policy "Storefront media is public readable"
+  on storage.objects
+  for select
+  using (bucket_id = 'storefront-media');
+
+drop policy if exists "Authenticated users can upload storefront media" on storage.objects;
+create policy "Authenticated users can upload storefront media"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'storefront-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Authenticated users can update own storefront media" on storage.objects;
+create policy "Authenticated users can update own storefront media"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'storefront-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'storefront-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Authenticated users can delete own storefront media" on storage.objects;
+create policy "Authenticated users can delete own storefront media"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'storefront-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
   );

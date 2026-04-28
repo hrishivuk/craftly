@@ -1,48 +1,89 @@
 import { Link } from 'react-router-dom'
+import { trackEvent } from '../lib/analytics'
 
 export function HomePage() {
   return (
-    <article className="page page-home">
-      <section className="hero-grid">
-        <div className="hero-copy">
-          <p className="eyebrow">For independent artists and makers</p>
-          <h1>Build your Artisan shop and turn interest into real projects.</h1>
-          <p className="lead">
-            Craftly helps artisans and gifters connect through meaning, not just product specs.
-            Share your story, showcase handcrafted work, and invite custom requests with one
-            profile URL.
-          </p>
-          <div className="cta-row">
-            <Link className="btn btn-primary nav-link-btn" to="/join">
-              Become an Artisan
-            </Link>
-            <Link className="btn btn-soft nav-link-btn" to="/a/terra-studio">
-              View sample shop
-            </Link>
-          </div>
+    <article className="page page-home home-paper">
+      <section className="paper-hero">
+        <div className="paper-hero-hands left" />
+        <div className="paper-hero-hands right" />
+        <div className="paper-hero-center">
+          <h1>Handmade Gifts</h1>
+          <p>Creation begins with you. We help it reach the right person.</p>
+          <Link
+            className="btn btn-primary nav-link-btn hero-primary-btn"
+            to="/join"
+            onClick={() => trackEvent('home_cta_clicked', { location: 'hero' })}
+          >
+            Become an Artisan
+          </Link>
         </div>
+        <div className="torn-divider" />
+      </section>
 
-        <div className="hero-art">
-          <div className="sticker sticker-a">Clay</div>
-          <div className="sticker sticker-b">Weave</div>
-          <div className="sticker sticker-c">Wood</div>
-          <div className="art-blob">Pastel craft collage area</div>
+      <section className="paper-values">
+        <article>
+          <span className="value-icon">♡</span>
+          <h3>Made by real people</h3>
+          <p>Not machines.</p>
+        </article>
+        <article>
+          <span className="value-icon">🧵</span>
+          <h3>Support artists</h3>
+          <p>Empower creativity.</p>
+        </article>
+        <article>
+          <span className="value-icon">🎁</span>
+          <h3>Gifts that mean more</h3>
+          <p>Thoughtful. Personal. Timeless.</p>
+        </article>
+      </section>
+
+      <section className="artisan-banner">
+        <div>
+          <p>Are you a creator?</p>
+          <h3>Make something beautiful. Get paid for it.</h3>
+        </div>
+        <Link className="btn btn-primary nav-link-btn" to="/join">
+          Join as Creator
+        </Link>
+      </section>
+
+      <section className="paper-section" id="how-it-works">
+        <h2 className="center-title">How it works</h2>
+        <div className="how-papers">
+          <article>
+            <span>1</span>
+            <h4>Join</h4>
+            <p>Create your profile and tell your story.</p>
+          </article>
+          <article>
+            <span>2</span>
+            <h4>List</h4>
+            <p>Add your creations and set your price.</p>
+          </article>
+          <article>
+            <span>3</span>
+            <h4>Get discovered</h4>
+            <p>Connect with people who love handmade.</p>
+          </article>
+          <article>
+            <span>4</span>
+            <h4>Earn & grow</h4>
+            <p>Get paid, build your brand, and keep creating.</p>
+          </article>
         </div>
       </section>
 
-      <section className="feature-trio">
-        <div className="card card-mint">
-          <h3>Personal shop URL</h3>
-          <p>Each Artisan gets a dedicated profile page with products and brand identity.</p>
-        </div>
-        <div className="card card-peach">
-          <h3>Display your product catalog</h3>
-          <p>Showcase photos, descriptions, and price hints for ready or custom pieces.</p>
-        </div>
-        <div className="card card-lilac">
-          <h3>Human-centered gifting</h3>
-          <p>Turn a purchase into an emotional memory with custom requests and maker context.</p>
-        </div>
+      <section className="paper-footer-cta">
+        <h3>Stay inspired</h3>
+        <p>Get stories, new collections, and special offers straight to your inbox.</p>
+        <form className="paper-footer-form">
+          <input type="email" placeholder="Enter your email" />
+          <button className="btn btn-primary" type="button">
+            Subscribe
+          </button>
+        </form>
       </section>
     </article>
   )

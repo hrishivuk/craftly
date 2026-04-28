@@ -1,14 +1,23 @@
 import type { FormEvent } from 'react'
 import { useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { trackEvent } from '../lib/analytics'
+import { upsertProfile } from '../lib/craftlyApi'
+import { toErrorMessage } from '../lib/errors'
+import { normalizeSlug } from '../lib/slug'
+
+type SignupStep = 1 | 2 | 3
 
 export function JoinArtisanPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, user } = useAuth()
   const [mode, setMode] = useState<'signin' | 'signup'>('signup')
+  const [signupStep, setSignupStep] = useState<SignupStep>(1)
   const [displayName, setDisplayName] = useState('')
+  const [slug, setSlug] = useState('')
+  const [bio, setBio] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -22,6 +31,35 @@ export function JoinArtisanPage() {
 
   const submitLabel = mode === 'signin' ? 'Log in to dashboard' : 'Create account'
 
+  const goToNextStep = () => {
+    if (signupStep === 1) {
+      if (!displayName.trim() || !email.trim() || !password.trim()) {
+        setErrorMessage('Display name, email, and password are required.')
+        return
+      }
+      trackEvent('join_step_completed', { step: 1 })
+      setSignupStep(2)
+      return
+    }
+
+    if (signupStep === 2) {
+      const cleanedSlug = normalizeSlug(slug)
+      if (!cleanedSlug) {
+        setErrorMessage('Please add a valid profile slug.')
+        return
+      }
+      setSlug(cleanedSlug)
+      trackEvent('join_step_completed', { step: 2 })
+      setSignupStep(3)
+    }
+  }
+
+  const goToPreviousStep = () => {
+    setErrorMessage(null)
+    setNoticeMessage(null)
+    setSignupStep((prev) => (prev === 1 ? 1 : ((prev - 1) as SignupStep)))
+  }
+
   const handleContinue = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setErrorMessage(null)
@@ -32,8 +70,8 @@ export function JoinArtisanPage() {
       return
     }
 
-    if (mode === 'signup' && !displayName.trim()) {
-      setErrorMessage('Display name is required for new artisans.')
+    if (mode === 'signup' && signupStep < 3) {
+      goToNextStep()
       return
     }
 
@@ -45,16 +83,34 @@ export function JoinArtisanPage() {
           setNoticeMessage('Check your email to confirm your account, then log in.')
           return
         }
+
+        const effectiveUser = session.user ?? user
+        if (effectiveUser) {
+          await upsertProfile(effectiveUser, {
+            slug: normalizeSlug(slug),
+            display_name: displayName.trim(),
+            bio: bio.trim(),
+            story: '',
+          })
+        }
       } else {
         await signIn(email.trim(), password)
       }
 
+      trackEvent('join_auth_success', { mode, step: signupStep })
       navigate(nextPath)
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to continue right now.')
+      setErrorMessage(toErrorMessage(error, 'Unable to continue right now.'))
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const isSignin = mode === 'signin'
+  const isFinalSignupStep = signupStep === 3
+
+  if (user && isSignin) {
+    return <Navigate to={nextPath} replace />
   }
 
   return (
@@ -69,14 +125,23 @@ export function JoinArtisanPage() {
           <div className="mode-switch" role="tablist" aria-label="Account mode">
             <button
               className={`btn btn-soft ${mode === 'signup' ? 'mode-active' : ''}`}
-              onClick={() => setMode('signup')}
+              onClick={() => {
+                setMode('signup')
+                setSignupStep(1)
+                setErrorMessage(null)
+                setNoticeMessage(null)
+              }}
               type="button"
             >
               New Artisan
             </button>
             <button
               className={`btn btn-soft ${mode === 'signin' ? 'mode-active' : ''}`}
-              onClick={() => setMode('signin')}
+              onClick={() => {
+                setMode('signin')
+                setErrorMessage(null)
+                setNoticeMessage(null)
+              }}
               type="button"
             >
               Returning Artisan
@@ -84,13 +149,13 @@ export function JoinArtisanPage() {
           </div>
 
           <div className="steps">
-            <span className="step active">1 Account</span>
-            <span className="step">2 Shop details</span>
-            <span className="step">3 First product</span>
+            <span className={`step ${signupStep >= 1 ? 'active' : ''}`}>1 Account</span>
+            <span className={`step ${signupStep >= 2 ? 'active' : ''}`}>2 Shop details</span>
+            <span className={`step ${signupStep >= 3 ? 'active' : ''}`}>3 Publish</span>
           </div>
 
           <form className="form-card" onSubmit={handleContinue}>
-            {mode === 'signup' ? (
+            {mode === 'signup' && signupStep === 1 ? (
               <label>
                 <span>Display name</span>
                 <input
@@ -101,29 +166,80 @@ export function JoinArtisanPage() {
                 />
               </label>
             ) : null}
-            <label>
-              <span>Email</span>
-              <input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>Password</span>
-              <input
-                type="password"
-                placeholder="Minimum 6 characters"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </label>
+
+            {isSignin || signupStep === 1 ? (
+              <>
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    placeholder="Minimum 6 characters"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+              </>
+            ) : null}
+
+            {mode === 'signup' && signupStep === 2 ? (
+              <>
+                <label>
+                  <span>Profile URL</span>
+                  <input
+                    type="text"
+                    placeholder="terra-clay-studio"
+                    value={slug}
+                    onChange={(event) => setSlug(event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Short bio (optional)</span>
+                  <textarea
+                    rows={3}
+                    placeholder="What do you craft and for whom?"
+                    value={bio}
+                    onChange={(event) => setBio(event.target.value)}
+                  />
+                </label>
+              </>
+            ) : null}
+
+            {mode === 'signup' && signupStep === 3 ? (
+              <section className="signup-preview">
+                <p className="eyebrow">Preview</p>
+                <h3>{displayName || 'Your studio name'}</h3>
+                <p>Public URL: craftly.com/a/{normalizeSlug(slug) || 'your-slug'}</p>
+                <p>{bio || 'Add your bio to help buyers understand your style.'}</p>
+              </section>
+            ) : null}
+
             {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
             {noticeMessage ? <p className="form-success">{noticeMessage}</p> : null}
-            <button className="btn btn-primary full" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Submitting...' : submitLabel}
-            </button>
+            <div className="step-actions">
+              {mode === 'signup' && signupStep > 1 ? (
+                <button className="btn btn-soft" type="button" onClick={goToPreviousStep}>
+                  Back
+                </button>
+              ) : null}
+              <button className="btn btn-primary full" type="submit" disabled={isSubmitting}>
+                {isSubmitting
+                  ? 'Submitting...'
+                  : isSignin
+                    ? submitLabel
+                    : isFinalSignupStep
+                      ? 'Create account'
+                      : 'Continue'}
+              </button>
+            </div>
           </form>
         </div>
 

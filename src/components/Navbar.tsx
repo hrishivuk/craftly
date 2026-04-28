@@ -1,27 +1,47 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
 
 type NavbarProps = {
-  actionLabel?: string
-  actionTo?: string
   onActionClick?: () => void
 }
 
-export function Navbar({ actionLabel = 'Log in', actionTo = '/join', onActionClick }: NavbarProps) {
+export function Navbar({ onActionClick }: NavbarProps) {
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
+
+  const handleLogout = async () => {
+    if (onActionClick) {
+      onActionClick()
+      return
+    }
+
+    try {
+      await signOut()
+      navigate('/')
+    } catch (error) {
+      console.error('Failed to log out', error)
+    }
+  }
+
   return (
     <header className="top-nav">
       <Link className="brand-link" to="/">
-        Craftly
+        craftly .
       </Link>
 
-      {onActionClick ? (
-        <button className="btn btn-soft" onClick={onActionClick} type="button">
-          {actionLabel}
-        </button>
-      ) : (
-        <Link className="btn btn-soft nav-link-btn" to={actionTo}>
-          {actionLabel}
-        </Link>
-      )}
+      <div />
+
+      <div className="top-nav-actions">
+        {user ? (
+          <button className="btn btn-soft nav-action-btn" onClick={handleLogout} type="button">
+            Log out
+          </button>
+        ) : (
+          <Link className="btn btn-soft nav-link-btn nav-action-btn" to="/join">
+            Log in
+          </Link>
+        )}
+      </div>
     </header>
   )
 }

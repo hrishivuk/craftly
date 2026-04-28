@@ -19,14 +19,16 @@ export function DashboardLayout() {
     <main className="site-shell dashboard-shell">
       <aside className="admin-sidebar">
         <p className="admin-brand">Craftly Studio</p>
+        <NavLink to="/dashboard/overview">Overview</NavLink>
+        <NavLink to="/dashboard/studio">Storefront Studio</NavLink>
         <NavLink to="/dashboard/profile">Profile</NavLink>
         <NavLink to="/dashboard/products">Products</NavLink>
-        <span className="coming-soon-nav">Buyer requests</span>
-        <span className="coming-soon-nav">Profile settings</span>
+        <NavLink to="/dashboard/inquiries">Buyer inquiries</NavLink>
+        <NavLink to="/dashboard/insights">Insights</NavLink>
       </aside>
 
       <section className="dashboard-stage">
-        <Navbar actionLabel="Log out" onActionClick={handleLogout} />
+        <Navbar onActionClick={handleLogout} />
         <Outlet />
       </section>
     </main>

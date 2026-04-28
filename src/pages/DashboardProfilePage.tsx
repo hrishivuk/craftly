@@ -1,23 +1,17 @@
 import type { FormEvent } from 'react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
 import { useAuth } from '../auth/useAuth'
 import { fetchProfileByUserId, upsertProfile } from '../lib/craftlyApi'
+import { toErrorMessage } from '../lib/errors'
+import { normalizeSlug } from '../lib/slug'
 
 type ProfileFormState = {
   slug: string
   displayName: string
   bio: string
   story: string
-}
-
-function normalizeSlug(input: string): string {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/--+/g, '-')
-    .replace(/^-|-$/g, '')
 }
 
 export function DashboardProfilePage() {
@@ -56,7 +50,7 @@ export function DashboardProfilePage() {
         }
       } catch (error) {
         if (!isMounted) return
-        setErrorMessage(error instanceof Error ? error.message : 'Unable to load profile.')
+        setErrorMessage(toErrorMessage(error, 'Unable to load profile.'))
       } finally {
         if (isMounted) setIsLoading(false)
       }
@@ -98,7 +92,7 @@ export function DashboardProfilePage() {
       }))
       setSuccessMessage('Profile saved. Your public shop is live.')
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not save profile.')
+      setErrorMessage(toErrorMessage(error, 'Could not save profile.'))
     } finally {
       setIsSaving(false)
     }
@@ -117,16 +111,19 @@ export function DashboardProfilePage() {
   return (
     <article className="page page-admin-content">
       <section className="admin-main">
-        <div className="admin-head">
-          <h2>Profile & Story</h2>
-          <button
-            className="btn btn-soft"
-            type="button"
-            onClick={() => navigate(`/a/${formState.slug || 'your-slug'}`)}
-          >
-            View public shop
-          </button>
-        </div>
+        <DashboardSectionHeader
+          title="Profile & Story"
+          description="Shape buyer trust with a clear narrative and identity."
+          actions={
+            <button
+              className="btn btn-soft"
+              type="button"
+              onClick={() => navigate(`/a/${formState.slug || 'your-slug'}`)}
+            >
+              View public shop
+            </button>
+          }
+        />
 
         <form className="panel panel-form" onSubmit={handleSubmit}>
           <label>

@@ -1,13 +1,15 @@
 import type { FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { useAuth } from '../auth/useAuth'
+import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
+import { useArtisanProfile } from '../hooks/useArtisanProfile'
+import { trackEvent } from '../lib/analytics'
 import {
   createProduct,
   deleteProduct,
   fetchProductsByArtisanId,
-  fetchProfileByUserId,
   updateProduct,
 } from '../lib/craftlyApi'
+import { toErrorMessage } from '../lib/errors'
 import type { ProductRow, ProductStatus } from '../types/database'
 
 type ProductFormState = {
@@ -25,41 +27,31 @@ const emptyForm: ProductFormState = {
 }
 
 export function DashboardProductsPage() {
-  const { user } = useAuth()
-  const [artisanId, setArtisanId] = useState<string | null>(null)
+  const { profile, isLoading: isProfileLoading } = useArtisanProfile()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [editingProductId, setEditingProductId] = useState<string | null>(null)
   const [formState, setFormState] = useState<ProductFormState>(emptyForm)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!profile) {
+      return
+    }
 
     let isMounted = true
     const load = async () => {
       setIsLoading(true)
       setErrorMessage(null)
       try {
-        const profile = await fetchProfileByUserId(user.id)
-        if (!profile) {
-          if (isMounted) {
-            setArtisanId(null)
-            setProducts([])
-            setErrorMessage('Create your profile first to manage products.')
-          }
-          return
-        }
-
         const listing = await fetchProductsByArtisanId(profile.id)
         if (!isMounted) return
 
-        setArtisanId(profile.id)
         setProducts(listing)
       } catch (error) {
         if (!isMounted) return
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load products.')
+        setErrorMessage(toErrorMessage(error, 'Failed to load products.'))
       } finally {
         if (isMounted) setIsLoading(false)
       }
@@ -69,7 +61,7 @@ export function DashboardProductsPage() {
     return () => {
       isMounted = false
     }
-  }, [user])
+  }, [profile])
 
   const actionLabel = useMemo(
     () => (editingProductId ? 'Update product' : 'Save product'),
@@ -85,7 +77,7 @@ export function DashboardProductsPage() {
     event.preventDefault()
     setErrorMessage(null)
 
-    if (!artisanId) {
+    if (!profile) {
       setErrorMessage('Profile is required before adding products.')
       return
     }
@@ -106,19 +98,33 @@ export function DashboardProductsPage() {
         })
 
         setProducts((prev) => prev.map((item) => (item.id === editingProductId ? updated : item)))
+        trackEvent('product_saved', {
+          mode: 'edit',
+          status: formState.status,
+        })
       } else {
-        const created = await createProduct(artisanId, {
+        const created = await createProduct(profile.id, {
           title: formState.title.trim(),
           description: formState.description.trim(),
           price_hint: formState.priceHint.trim(),
           status: formState.status,
         })
         setProducts((prev) => [created, ...prev])
+        trackEvent('product_saved', {
+          mode: 'create',
+          status: formState.status,
+        })
+      }
+
+      if (formState.status === 'published') {
+        trackEvent('product_published', {
+          mode: editingProductId ? 'edit' : 'create',
+        })
       }
 
       resetForm()
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to save product.')
+      setErrorMessage(toErrorMessage(error, 'Failed to save product.'))
     } finally {
       setIsSaving(false)
     }
@@ -141,11 +147,13 @@ export function DashboardProductsPage() {
       setProducts((prev) => prev.filter((item) => item.id !== productId))
       if (editingProductId === productId) resetForm()
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Failed to delete product.')
+      setErrorMessage(toErrorMessage(error, 'Failed to delete product.'))
     }
   }
 
-  if (isLoading) {
+  const pageLoading = isProfileLoading || (Boolean(profile) && isLoading)
+
+  if (pageLoading) {
     return (
       <article className="page page-admin-content">
         <section className="admin-main">
@@ -158,19 +166,24 @@ export function DashboardProductsPage() {
   return (
     <article className="page page-admin-content">
       <section className="admin-main">
-        <div className="admin-head">
-          <h2>Product Management</h2>
-          {editingProductId ? (
-            <button className="btn btn-soft" onClick={resetForm} type="button">
-              Cancel edit
-            </button>
-          ) : null}
-        </div>
+        <DashboardSectionHeader
+          title="Products"
+          description="Manage listings that make first-look decisions easier for buyers."
+          actions={
+            editingProductId ? (
+              <button className="btn btn-soft" onClick={resetForm} type="button">
+                Cancel edit
+              </button>
+            ) : null
+          }
+        />
 
         <div className="admin-content-grid">
           <div className="panel">
             <h3>Your listings</h3>
-            {products.length === 0 ? (
+            {!profile ? (
+              <p className="empty-state">Create your profile first to manage products.</p>
+            ) : products.length === 0 ? (
               <p className="empty-state">No products yet. Add your first listing.</p>
             ) : (
               <div className="rows">
@@ -236,7 +249,7 @@ export function DashboardProductsPage() {
               </select>
             </label>
             {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
-            <button className="btn btn-primary" type="submit" disabled={isSaving}>
+            <button className="btn btn-primary" type="submit" disabled={isSaving || !profile}>
               {isSaving ? 'Saving...' : actionLabel}
             </button>
           </form>

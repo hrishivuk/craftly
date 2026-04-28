@@ -1,7 +1,9 @@
-import type { FormEvent } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { trackEvent } from '../lib/analytics'
 import { createCustomRequest, fetchProductsByArtisanId, fetchPublicProfileBySlug } from '../lib/craftlyApi'
+import { getStorefrontStudioConfigFromProfile } from '../lib/storefrontStudio'
 import type { ArtisanProfileRow, ProductRow } from '../types/database'
 
 export function ArtisanShopPage() {
@@ -28,6 +30,14 @@ export function ArtisanShopPage() {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ')
   }, [slug])
+  const storefrontConfig = useMemo(() => {
+    return getStorefrontStudioConfigFromProfile(profile)
+  }, [profile])
+
+  const handleOpenContact = () => {
+    trackEvent('inquiry_started', { slug: slug ?? null })
+    document.getElementById('request-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     if (!slug) return
@@ -99,6 +109,7 @@ export function ArtisanShopPage() {
         details: '',
       })
       setRequestSuccess('Request sent. The artisan can now review your idea.')
+      trackEvent('inquiry_submitted', { slug: slug ?? null })
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : 'Unable to send your request.')
     } finally {
@@ -131,36 +142,69 @@ export function ArtisanShopPage() {
   }
 
   const studioName = profile?.display_name || fallbackName
+  const avatarInitials = studioName
+    .split(' ')
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join('')
+
+  const shopThemeStyle = {
+    '--shop-primary': storefrontConfig.primaryColor,
+    '--shop-secondary': storefrontConfig.secondaryColor,
+  } as CSSProperties
 
   return (
-    <article className="page page-buyer">
-      <section className="shop-hero">
-        <div className="avatar">TS</div>
-        <div className="shop-hero-copy">
-          <h2>{studioName}</h2>
-          <p>{profile?.bio || 'Handcrafted work rooted in emotion, memory, and meaningful gifting.'}</p>
-          <p>{profile?.story || 'Every piece is made to carry a story from maker to receiver.'}</p>
-          <p className="profile-link">craftly.com/a/{slug || 'terra-studio'}</p>
+    <article
+      className={`page page-buyer page-shop-rework shop-page-tone-${storefrontConfig.tone} shop-v3-shell`}
+      style={shopThemeStyle}
+    >
+      <section className={`shop-v3-hero shop-tone-${storefrontConfig.tone}`}>
+        <div className="shop-v3-hero-inner">
+          <div
+            className="shop-v3-banner"
+            style={{
+              backgroundImage: storefrontConfig.shopBannerUrl
+                ? `linear-gradient(125deg, rgba(23, 18, 14, 0.62), rgba(23, 18, 14, 0.28)), url(${storefrontConfig.shopBannerUrl})`
+                : undefined,
+            }}
+          >
+            <div className="shop-v3-identity">
+              {storefrontConfig.shopAvatarUrl ? (
+                <img className="shop-v3-avatar-image" src={storefrontConfig.shopAvatarUrl} alt={studioName} />
+              ) : (
+                <div className="shop-v3-avatar">{avatarInitials || 'CS'}</div>
+              )}
+              <div>
+                <p className="eyebrow">Craftly artisan shop</p>
+                <h2>{studioName}</h2>
+                <p className="shop-v3-headline">{storefrontConfig.heroHeadline}</p>
+              </div>
+            </div>
+          </div>
+          <div className="shop-v3-meta-row">
+            <p>{profile?.bio || 'Handcrafted work rooted in emotion, memory, and meaningful gifting.'}</p>
+            <button className="btn btn-primary" type="button" onClick={handleOpenContact}>
+              Contact artisan
+            </button>
+          </div>
         </div>
-        <a className="btn btn-primary nav-link-btn" href="#request-form">
-          Request custom piece
-        </a>
       </section>
 
-      <section className="catalog">
+      <section className="catalog catalog-v2 shop-v3-products">
         <div className="section-head">
-          <h3>Products</h3>
-          <button className="btn btn-soft" type="button">
-            Story-led catalog
-          </button>
+          <h3>Featured creations</h3>
         </div>
         <div className="product-grid">
           {products.length === 0 ? (
             <p className="empty-state">This artisan has no published products yet.</p>
           ) : (
             products.map((product) => (
-              <article className="product-card" key={product.id}>
-                <div className="product-media">Image</div>
+              <article className="product-card product-card-v2 shop-v3-product-card" key={product.id}>
+                {product.image_url ? (
+                  <img className="product-media-image" src={product.image_url} alt={product.title} />
+                ) : (
+                  <div className="product-media shop-v3-product-media">Image coming soon</div>
+                )}
                 <div className="product-meta">
                   <p>{product.title}</p>
                   <span>{product.price_hint || 'Price on request'}</span>
@@ -172,11 +216,11 @@ export function ArtisanShopPage() {
         </div>
       </section>
 
-      <section className="catalog" id="request-form">
-        <div className="section-head">
-          <h3>Request a custom product</h3>
-        </div>
-        <form className="panel panel-form request-form" onSubmit={handleRequestSubmit}>
+      <section className="catalog catalog-v2 shop-request-section shop-v3-contact" id="request-form">
+        <form className="panel panel-form request-form shop-themed-form" onSubmit={handleRequestSubmit}>
+          <div className="section-head">
+            <h3>Contact artisan</h3>
+          </div>
           <label>
             <span>Your name</span>
             <input
@@ -198,29 +242,7 @@ export function ArtisanShopPage() {
             />
           </label>
           <label>
-            <span>Occasion (optional)</span>
-            <input
-              type="text"
-              value={requestState.occasion}
-              onChange={(event) =>
-                setRequestState((prev) => ({ ...prev, occasion: event.target.value }))
-              }
-              placeholder="Wedding, birthday, housewarming..."
-            />
-          </label>
-          <label>
-            <span>Budget range (optional)</span>
-            <input
-              type="text"
-              value={requestState.budgetRange}
-              onChange={(event) =>
-                setRequestState((prev) => ({ ...prev, budgetRange: event.target.value }))
-              }
-              placeholder="e.g. $80 - $150"
-            />
-          </label>
-          <label>
-            <span>Tell the artisan what you need</span>
+            <span>What do you want made?</span>
             <textarea
               rows={4}
               value={requestState.details}
@@ -235,6 +257,12 @@ export function ArtisanShopPage() {
             {isSubmittingRequest ? 'Sending request...' : 'Send request'}
           </button>
         </form>
+
+        <aside className="panel shop-v3-contact-side">
+          <p className="eyebrow">Quick process</p>
+          <h4>Simple and direct</h4>
+          <p>You share your idea. The artisan replies with availability, timeline, and next steps.</p>
+        </aside>
       </section>
     </article>
   )

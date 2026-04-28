@@ -9,6 +9,15 @@ export type ArtisanProfileRow = {
   bio: string | null
   story: string | null
   avatar_url: string | null
+  hero_headline: string | null
+  hero_subline: string | null
+  trust_note: string | null
+  featured_message: string | null
+  storefront_tone: 'earthy' | 'minimal' | 'bold' | null
+  shop_avatar_url: string | null
+  shop_banner_url: string | null
+  primary_color: string | null
+  secondary_color: string | null
   created_at: string
 }
 
@@ -48,6 +57,15 @@ export type Database = {
           bio?: string | null
           story?: string | null
           avatar_url?: string | null
+          hero_headline?: string | null
+          hero_subline?: string | null
+          trust_note?: string | null
+          featured_message?: string | null
+          storefront_tone?: 'earthy' | 'minimal' | 'bold' | null
+          shop_avatar_url?: string | null
+          shop_banner_url?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
           created_at?: string
         }
         Update: Partial<{
@@ -56,6 +74,15 @@ export type Database = {
           bio: string | null
           story: string | null
           avatar_url: string | null
+          hero_headline: string | null
+          hero_subline: string | null
+          trust_note: string | null
+          featured_message: string | null
+          storefront_tone: 'earthy' | 'minimal' | 'bold' | null
+          shop_avatar_url: string | null
+          shop_banner_url: string | null
+          primary_color: string | null
+          secondary_color: string | null
         }>
         Relationships: []
       }
