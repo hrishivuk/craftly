@@ -16,11 +16,14 @@ export type ProductInput = {
   description: string
   price_hint: string
   status: 'draft' | 'published'
+  image_urls: string[]
+  thumbnail_index: number
 }
 
 type StorefrontMediaKind = 'avatar' | 'banner'
 
 const STOREFRONT_MEDIA_BUCKET = 'storefront-media'
+const PRODUCT_MEDIA_BUCKET = 'product-media'
 
 function getFileExtension(fileName: string) {
   const parts = fileName.split('.')
@@ -43,6 +46,24 @@ export async function uploadStorefrontImage(params: {
   if (uploadError) throw uploadError
 
   const { data } = supabase.storage.from(STOREFRONT_MEDIA_BUCKET).getPublicUrl(objectPath)
+  return data.publicUrl
+}
+
+export async function uploadProductImage(params: {
+  userId: string
+  file: File
+}): Promise<string> {
+  const extension = getFileExtension(params.file.name)
+  const objectPath = `${params.userId}/gallery-${Date.now()}.${extension}`
+
+  const { error: uploadError } = await supabase
+    .storage
+    .from(PRODUCT_MEDIA_BUCKET)
+    .upload(objectPath, params.file, { upsert: true })
+
+  if (uploadError) throw uploadError
+
+  const { data } = supabase.storage.from(PRODUCT_MEDIA_BUCKET).getPublicUrl(objectPath)
   return data.publicUrl
 }
 
@@ -100,13 +121,32 @@ export async function fetchProductsByArtisanId(artisanId: string): Promise<Produ
   return data
 }
 
+export async function fetchProductByIdForArtisan(
+  artisanId: string,
+  productId: string,
+): Promise<ProductRow | null> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('id', productId)
+    .eq('artisan_id', artisanId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
 export async function createProduct(artisanId: string, input: ProductInput): Promise<ProductRow> {
+  const thumbnailUrl = input.image_urls[input.thumbnail_index] || input.image_urls[0] || null
   const payload = {
     artisan_id: artisanId,
     title: input.title,
     description: input.description || null,
     price_hint: input.price_hint || null,
     status: input.status,
+    image_url: thumbnailUrl,
+    image_urls: input.image_urls,
+    thumbnail_index: input.thumbnail_index,
   }
 
   const { data, error } = await supabase.from('products').insert(payload).select('*').single()
@@ -119,11 +159,15 @@ export async function updateProduct(
   productId: string,
   input: ProductInput,
 ): Promise<ProductRow> {
+  const thumbnailUrl = input.image_urls[input.thumbnail_index] || input.image_urls[0] || null
   const payload = {
     title: input.title,
     description: input.description || null,
     price_hint: input.price_hint || null,
     status: input.status,
+    image_url: thumbnailUrl,
+    image_urls: input.image_urls,
+    thumbnail_index: input.thumbnail_index,
   }
 
   const { data, error } = await supabase
@@ -172,6 +216,27 @@ export async function fetchCustomRequestsByArtisanId(artisanId: string): Promise
 
   if (error) throw error
   return data
+}
+
+export async function fetchPublishedProductBySlugAndId(
+  slug: string,
+  productId: string,
+): Promise<{ profile: ArtisanProfileRow; product: ProductRow } | null> {
+  const profile = await fetchPublicProfileBySlug(slug)
+  if (!profile) return null
+
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('id', productId)
+    .eq('artisan_id', profile.id)
+    .eq('status', 'published')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+
+  return { profile, product: data }
 }
 
 export async function updateStorefrontStudioConfig(

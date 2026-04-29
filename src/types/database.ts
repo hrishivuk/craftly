@@ -29,6 +29,8 @@ export type ProductRow = {
   price_hint: string | null
   status: ProductStatus
   image_url: string | null
+  image_urls: string[]
+  thumbnail_index: number
   created_at: string
 }
 
@@ -96,6 +98,8 @@ export type Database = {
           price_hint?: string | null
           status?: ProductStatus
           image_url?: string | null
+          image_urls?: string[]
+          thumbnail_index?: number
           created_at?: string
         }
         Update: Partial<{
@@ -104,6 +108,8 @@ export type Database = {
           price_hint: string | null
           status: ProductStatus
           image_url: string | null
+          image_urls: string[]
+          thumbnail_index: number
         }>
         Relationships: []
       }

@@ -1,16 +1,16 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { DashboardLayout } from './layouts/DashboardLayout'
-import { DashboardInsightsPage } from './pages/DashboardInsightsPage'
 import { DashboardInquiriesPage } from './pages/DashboardInquiriesPage'
-import { DashboardOverviewPage } from './pages/DashboardOverviewPage'
 import { PublicLayout } from './layouts/PublicLayout'
 import { ArtisanShopPage } from './pages/ArtisanShopPage'
+import { DashboardProductEditorPage } from './pages/DashboardProductEditorPage'
 import { DashboardProfilePage } from './pages/DashboardProfilePage'
 import { DashboardProductsPage } from './pages/DashboardProductsPage'
 import { DashboardStorefrontStudioPage } from './pages/DashboardStorefrontStudioPage'
 import { HomePage } from './pages/HomePage'
 import { JoinArtisanPage } from './pages/JoinArtisanPage'
+import { ProductDetailsPage } from './pages/ProductDetailsPage'
 import { useAuth } from './auth/useAuth'
 
 function HomeEntryRoute() {
@@ -21,7 +21,7 @@ function HomeEntryRoute() {
   }
 
   if (user) {
-    return <Navigate to="/dashboard/overview" replace />
+    return <Navigate to="/dashboard/studio" replace />
   }
 
   return <HomePage />
@@ -34,6 +34,7 @@ export function AppRouter() {
         <Route index element={<HomeEntryRoute />} />
         <Route path="/join" element={<JoinArtisanPage />} />
         <Route path="/a/:slug" element={<ArtisanShopPage />} />
+        <Route path="/a/:slug/p/:productId" element={<ProductDetailsPage />} />
       </Route>
 
       <Route
@@ -44,13 +45,13 @@ export function AppRouter() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<DashboardOverviewPage />} />
+        <Route index element={<Navigate to="studio" replace />} />
         <Route path="studio" element={<DashboardStorefrontStudioPage />} />
         <Route path="profile" element={<DashboardProfilePage />} />
         <Route path="products" element={<DashboardProductsPage />} />
+        <Route path="products/new" element={<DashboardProductEditorPage />} />
+        <Route path="products/:productId" element={<DashboardProductEditorPage />} />
         <Route path="inquiries" element={<DashboardInquiriesPage />} />
-        <Route path="insights" element={<DashboardInsightsPage />} />
       </Route>
 
       <Route path="/404" element={<p className="not-found">Page not found</p>} />

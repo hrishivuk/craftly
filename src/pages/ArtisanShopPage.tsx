@@ -1,8 +1,9 @@
 import type { CSSProperties, FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { trackEvent } from '../lib/analytics'
 import { createCustomRequest, fetchProductsByArtisanId, fetchPublicProfileBySlug } from '../lib/craftlyApi'
+import { getProductThumbnail } from '../lib/productImages'
 import { getStorefrontStudioConfigFromProfile } from '../lib/storefrontStudio'
 import type { ArtisanProfileRow, ProductRow } from '../types/database'
 
@@ -199,9 +200,13 @@ export function ArtisanShopPage() {
             <p className="empty-state">This artisan has no published products yet.</p>
           ) : (
             products.map((product) => (
-              <article className="product-card product-card-v2 shop-v3-product-card" key={product.id}>
-                {product.image_url ? (
-                  <img className="product-media-image" src={product.image_url} alt={product.title} />
+              <Link
+                className="product-card product-card-v2 shop-v3-product-card product-card-link"
+                key={product.id}
+                to={`/a/${slug}/p/${product.id}`}
+              >
+                {getProductThumbnail(product) ? (
+                  <img className="product-media-image" src={getProductThumbnail(product) || ''} alt={product.title} />
                 ) : (
                   <div className="product-media shop-v3-product-media">Image coming soon</div>
                 )}
@@ -210,7 +215,7 @@ export function ArtisanShopPage() {
                   <span>{product.price_hint || 'Price on request'}</span>
                   {product.description ? <small>{product.description}</small> : null}
                 </div>
-              </article>
+              </Link>
             ))
           )}
         </div>

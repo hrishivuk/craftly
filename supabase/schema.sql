@@ -36,8 +36,13 @@ create table if not exists public.products (
   price_hint text,
   status text not null default 'draft' check (status in ('draft', 'published')),
   image_url text,
+  image_urls text[] not null default '{}',
+  thumbnail_index integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table public.products add column if not exists image_urls text[] not null default '{}';
+alter table public.products add column if not exists thumbnail_index integer not null default 0;
 
 create table if not exists public.custom_requests (
   id uuid primary key default gen_random_uuid(),
@@ -158,5 +163,49 @@ create policy "Authenticated users can delete own storefront media"
   to authenticated
   using (
     bucket_id = 'storefront-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+insert into storage.buckets (id, name, public)
+values ('product-media', 'product-media', true)
+on conflict (id) do nothing;
+
+drop policy if exists "Product media is public readable" on storage.objects;
+create policy "Product media is public readable"
+  on storage.objects
+  for select
+  using (bucket_id = 'product-media');
+
+drop policy if exists "Authenticated users can upload product media" on storage.objects;
+create policy "Authenticated users can upload product media"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'product-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Authenticated users can update own product media" on storage.objects;
+create policy "Authenticated users can update own product media"
+  on storage.objects
+  for update
+  to authenticated
+  using (
+    bucket_id = 'product-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  )
+  with check (
+    bucket_id = 'product-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Authenticated users can delete own product media" on storage.objects;
+create policy "Authenticated users can delete own product media"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'product-media'
     and (storage.foldername(name))[1] = auth.uid()::text
   );
