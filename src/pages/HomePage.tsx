@@ -55,7 +55,7 @@ export function HomePage() {
           <article>
             <span>1</span>
             <h4>Join</h4>
-            <p>Create your profile and tell your story.</p>
+            <p>Create your shop and set your brand style.</p>
           </article>
           <article>
             <span>2</span>

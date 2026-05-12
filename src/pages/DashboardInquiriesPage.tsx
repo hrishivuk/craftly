@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
-import { useArtisanProfile } from '../hooks/useArtisanProfile'
-import { fetchCustomRequestsByArtisanId } from '../lib/craftlyApi'
+import { useShop } from '../hooks/useShop'
+import { fetchCustomRequestsByShopId, updateCustomRequestStatus } from '../lib/craftlyApi'
 import { toErrorMessage } from '../lib/errors'
 import type { CustomRequestRow } from '../types/database'
 
@@ -12,14 +12,15 @@ const statusLabel: Record<CustomRequestRow['status'], string> = {
 }
 
 export function DashboardInquiriesPage() {
-  const { profile, isLoading: isProfileLoading } = useArtisanProfile()
+  const { shop, isLoading: isShopLoading } = useShop()
   const [activeFilter, setActiveFilter] = useState<CustomRequestRow['status'] | 'all'>('all')
   const [requests, setRequests] = useState<CustomRequestRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [updatingRequestId, setUpdatingRequestId] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!profile) {
+    if (!shop) {
       return
     }
 
@@ -29,7 +30,7 @@ export function DashboardInquiriesPage() {
       setErrorMessage(null)
 
       try {
-        const rows = await fetchCustomRequestsByArtisanId(profile.id)
+        const rows = await fetchCustomRequestsByShopId(shop.id)
         if (!isMounted) return
         setRequests(rows)
       } catch (error) {
@@ -44,12 +45,30 @@ export function DashboardInquiriesPage() {
     return () => {
       isMounted = false
     }
-  }, [profile])
+  }, [shop])
 
   const filtered = useMemo(() => {
     if (activeFilter === 'all') return requests
     return requests.filter((item) => item.status === activeFilter)
   }, [activeFilter, requests])
+
+  const handleStatusUpdate = async (
+    requestId: string,
+    status: CustomRequestRow['status'],
+  ) => {
+    setErrorMessage(null)
+    setUpdatingRequestId(requestId)
+    try {
+      const updated = await updateCustomRequestStatus(requestId, status)
+      setRequests((prev) =>
+        prev.map((row) => (row.id === requestId ? { ...row, status: updated.status } : row)),
+      )
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, 'Unable to update request status right now.'))
+    } finally {
+      setUpdatingRequestId(null)
+    }
+  }
 
   return (
     <article className="page page-admin-content">
@@ -73,15 +92,15 @@ export function DashboardInquiriesPage() {
           }
         />
 
-        {isProfileLoading || (Boolean(profile) && isLoading) ? (
+        {isShopLoading || (Boolean(shop) && isLoading) ? (
           <p className="auth-state">Loading inquiries...</p>
         ) : null}
-        {!profile && !isProfileLoading ? (
-          <p className="empty-state">Create your profile first to start receiving inquiries.</p>
+        {!shop && !isShopLoading ? (
+          <p className="empty-state">Complete onboarding first to start receiving inquiries.</p>
         ) : null}
         {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
 
-        {!isProfileLoading && !(Boolean(profile) && isLoading) && !errorMessage && profile ? (
+        {!isShopLoading && !(Boolean(shop) && isLoading) && !errorMessage && shop ? (
           filtered.length === 0 ? (
             <p className="empty-state">No inquiries in this status yet.</p>
           ) : (
@@ -96,6 +115,38 @@ export function DashboardInquiriesPage() {
                   {item.occasion ? <p className="inquiry-meta">Occasion: {item.occasion}</p> : null}
                   {item.budget_range ? <p className="inquiry-meta">Budget: {item.budget_range}</p> : null}
                   <p>{item.details}</p>
+                  <div className="inline-actions">
+                    {item.status !== 'new' ? (
+                      <button
+                        className="btn btn-soft"
+                        type="button"
+                        onClick={() => handleStatusUpdate(item.id, 'new')}
+                        disabled={updatingRequestId === item.id}
+                      >
+                        Mark new
+                      </button>
+                    ) : null}
+                    {item.status !== 'reviewed' ? (
+                      <button
+                        className="btn btn-soft"
+                        type="button"
+                        onClick={() => handleStatusUpdate(item.id, 'reviewed')}
+                        disabled={updatingRequestId === item.id}
+                      >
+                        Mark in discussion
+                      </button>
+                    ) : null}
+                    {item.status !== 'closed' ? (
+                      <button
+                        className="btn btn-soft"
+                        type="button"
+                        onClick={() => handleStatusUpdate(item.id, 'closed')}
+                        disabled={updatingRequestId === item.id}
+                      >
+                        Close
+                      </button>
+                    ) : null}
+                  </div>
                 </article>
               ))}
             </div>

@@ -1,14 +1,12 @@
 export type ProductStatus = 'draft' | 'published'
 export type CustomRequestStatus = 'new' | 'reviewed' | 'closed'
 
-export type ArtisanProfileRow = {
+export type ShopRow = {
   id: string
   user_id: string
   slug: string
-  display_name: string
-  bio: string | null
-  story: string | null
-  avatar_url: string | null
+  name: string
+  description: string | null
   hero_headline: string | null
   hero_subline: string | null
   trust_note: string | null
@@ -18,15 +16,19 @@ export type ArtisanProfileRow = {
   shop_banner_url: string | null
   primary_color: string | null
   secondary_color: string | null
+  onboarding_completed: boolean
   created_at: string
 }
 
 export type ProductRow = {
   id: string
-  artisan_id: string
+  shop_id: string
   title: string
   description: string | null
   price_hint: string | null
+  shipping_note: string | null
+  support_note: string | null
+  detail_points: string[]
   status: ProductStatus
   image_url: string | null
   image_urls: string[]
@@ -36,7 +38,7 @@ export type ProductRow = {
 
 export type CustomRequestRow = {
   id: string
-  artisan_id: string
+  shop_id: string
   buyer_name: string
   buyer_email: string
   occasion: string | null
@@ -49,16 +51,14 @@ export type CustomRequestRow = {
 export type Database = {
   public: {
     Tables: {
-      artisan_profiles: {
-        Row: ArtisanProfileRow
+      shops: {
+        Row: ShopRow
         Insert: {
           id?: string
           user_id: string
           slug: string
-          display_name: string
-          bio?: string | null
-          story?: string | null
-          avatar_url?: string | null
+          name: string
+          description?: string | null
           hero_headline?: string | null
           hero_subline?: string | null
           trust_note?: string | null
@@ -68,14 +68,13 @@ export type Database = {
           shop_banner_url?: string | null
           primary_color?: string | null
           secondary_color?: string | null
+          onboarding_completed?: boolean
           created_at?: string
         }
         Update: Partial<{
           slug: string
-          display_name: string
-          bio: string | null
-          story: string | null
-          avatar_url: string | null
+          name: string
+          description: string | null
           hero_headline: string | null
           hero_subline: string | null
           trust_note: string | null
@@ -85,6 +84,7 @@ export type Database = {
           shop_banner_url: string | null
           primary_color: string | null
           secondary_color: string | null
+          onboarding_completed: boolean
         }>
         Relationships: []
       }
@@ -92,10 +92,13 @@ export type Database = {
         Row: ProductRow
         Insert: {
           id?: string
-          artisan_id: string
+          shop_id: string
           title: string
           description?: string | null
           price_hint?: string | null
+          shipping_note?: string | null
+          support_note?: string | null
+          detail_points?: string[]
           status?: ProductStatus
           image_url?: string | null
           image_urls?: string[]
@@ -106,6 +109,9 @@ export type Database = {
           title: string
           description: string | null
           price_hint: string | null
+          shipping_note: string | null
+          support_note: string | null
+          detail_points: string[]
           status: ProductStatus
           image_url: string | null
           image_urls: string[]
@@ -117,7 +123,7 @@ export type Database = {
         Row: CustomRequestRow
         Insert: {
           id?: string
-          artisan_id: string
+          shop_id: string
           buyer_name: string
           buyer_email: string
           occasion?: string | null

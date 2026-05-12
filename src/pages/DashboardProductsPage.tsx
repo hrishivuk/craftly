@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
-import { useArtisanProfile } from '../hooks/useArtisanProfile'
-import { fetchProductsByArtisanId } from '../lib/craftlyApi'
+import { useShop } from '../hooks/useShop'
+import { fetchProductsByShopId } from '../lib/craftlyApi'
 import { toErrorMessage } from '../lib/errors'
 import { getOrderedProductImages, getProductThumbnail } from '../lib/productImages'
 import type { ProductRow } from '../types/database'
 
 export function DashboardProductsPage() {
-  const { profile, isLoading: isProfileLoading } = useArtisanProfile()
+  const { shop, isLoading: isShopLoading } = useShop()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!profile) {
+    if (!shop) {
       return
     }
 
@@ -23,7 +23,7 @@ export function DashboardProductsPage() {
       setIsLoading(true)
       setErrorMessage(null)
       try {
-        const listing = await fetchProductsByArtisanId(profile.id)
+        const listing = await fetchProductsByShopId(shop.id)
         if (!isMounted) return
 
         setProducts(listing)
@@ -39,9 +39,9 @@ export function DashboardProductsPage() {
     return () => {
       isMounted = false
     }
-  }, [profile])
+  }, [shop])
 
-  const pageLoading = isProfileLoading || (Boolean(profile) && isLoading)
+  const pageLoading = isShopLoading || (Boolean(shop) && isLoading)
 
   if (pageLoading) {
     return (
@@ -66,8 +66,8 @@ export function DashboardProductsPage() {
           }
         />
 
-        {!profile ? (
-          <p className="empty-state">Create your profile first to manage products.</p>
+        {!shop ? (
+          <p className="empty-state">Complete onboarding first to manage products.</p>
         ) : errorMessage ? (
           <p className="form-error">{errorMessage}</p>
         ) : products.length === 0 ? (

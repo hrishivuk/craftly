@@ -2,20 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
 import { InsightStatCard } from '../components/dashboard/InsightStatCard'
-import { useArtisanProfile } from '../hooks/useArtisanProfile'
-import { fetchCustomRequestsByArtisanId, fetchProductsByArtisanId } from '../lib/craftlyApi'
+import { useShop } from '../hooks/useShop'
+import { fetchCustomRequestsByShopId, fetchProductsByShopId } from '../lib/craftlyApi'
 import { toErrorMessage } from '../lib/errors'
 import type { CustomRequestRow, ProductRow } from '../types/database'
 
 export function DashboardOverviewPage() {
-  const { profile, isLoading: isProfileLoading, errorMessage: profileError } = useArtisanProfile()
+  const { shop, isLoading: isShopLoading, errorMessage: shopError } = useShop()
   const [products, setProducts] = useState<ProductRow[]>([])
   const [requests, setRequests] = useState<CustomRequestRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!profile) {
+    if (!shop) {
       return
     }
 
@@ -25,8 +25,8 @@ export function DashboardOverviewPage() {
       setErrorMessage(null)
       try {
         const [productRows, requestRows] = await Promise.all([
-          fetchProductsByArtisanId(profile.id),
-          fetchCustomRequestsByArtisanId(profile.id),
+          fetchProductsByShopId(shop.id),
+          fetchCustomRequestsByShopId(shop.id),
         ])
         if (!isMounted) return
         setProducts(productRows)
@@ -43,7 +43,7 @@ export function DashboardOverviewPage() {
     return () => {
       isMounted = false
     }
-  }, [profile])
+  }, [shop])
 
   const publishedCount = useMemo(
     () => products.filter((item) => item.status === 'published').length,
@@ -52,8 +52,12 @@ export function DashboardOverviewPage() {
 
   const draftCount = products.length - publishedCount
   const newRequestCount = requests.filter((item) => item.status === 'new').length
+  const hasDescription = Boolean(shop?.description?.trim())
+  const hasBanner = Boolean(shop?.shop_banner_url?.trim())
+  const hasPublishedProduct = publishedCount > 0
+  const checklistCompleted = [hasDescription, hasBanner, hasPublishedProduct].filter(Boolean).length
 
-  if (isProfileLoading) {
+  if (isShopLoading) {
     return (
       <article className="page page-admin-content">
         <section className="admin-main">
@@ -67,30 +71,30 @@ export function DashboardOverviewPage() {
     <article className="page page-admin-content">
       <section className="admin-main">
         <DashboardSectionHeader
-          title="Overview"
-          description="Track storefront readiness and buyer conversion signals."
+          title="Launch checklist"
+          description="Finish the essentials and start collecting buyer requests."
           actions={
-            <Link className="btn btn-primary nav-link-btn" to="/dashboard/studio">
-              Open Storefront Studio
+            <Link className="btn btn-primary nav-link-btn" to="/dashboard/products/new">
+              Add first product
             </Link>
           }
         />
 
-        {!profile ? (
+        {!shop ? (
           <div className="panel">
             <p className="empty-state">
-              Create your artisan profile first. Then this overview will show products, requests, and
-              conversion signals.
+              Finish onboarding to set up your shop. Then this overview will show products, requests,
+              and conversion signals.
             </p>
-            <Link className="btn btn-soft nav-link-btn" to="/dashboard/profile">
-              Complete profile
+            <Link className="btn btn-soft nav-link-btn" to="/onboarding">
+              Continue onboarding
             </Link>
           </div>
         ) : (
           <>
-            {profileError ? <p className="form-error">{profileError}</p> : null}
+            {shopError ? <p className="form-error">{shopError}</p> : null}
             {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
-            {Boolean(profile) && isLoading ? (
+            {Boolean(shop) && isLoading ? (
               <p className="auth-state">Loading overview metrics...</p>
             ) : null}
 
@@ -98,9 +102,9 @@ export function DashboardOverviewPage() {
               <>
                 <div className="insight-grid">
                   <InsightStatCard
-                    label="Storefront completion"
-                    value={profile.story ? '90%' : '70%'}
-                    hint={profile.story ? 'Story section is complete.' : 'Add your story to improve trust.'}
+                    label="Setup progress"
+                    value={`${checklistCompleted}/3`}
+                    hint={checklistCompleted === 3 ? 'Your shop basics are ready.' : 'Complete the checklist below.'}
                   />
                   <InsightStatCard
                     label="Published products"
@@ -116,26 +120,29 @@ export function DashboardOverviewPage() {
 
                 <div className="admin-content-grid">
                   <div className="panel">
-                    <h3>Quick actions</h3>
+                    <h3>What to do next</h3>
                     <div className="rows">
-                      <Link className="btn btn-soft nav-link-btn" to="/dashboard/studio">
-                        Customize hero and trust blocks
+                      <Link className="btn btn-soft nav-link-btn" to="/dashboard/shop">
+                        Complete shop basics
                       </Link>
-                      <Link className="btn btn-soft nav-link-btn" to="/dashboard/products">
-                        Add or publish products
+                      <Link className="btn btn-soft nav-link-btn" to="/dashboard/products/new">
+                        Add your first product
                       </Link>
                       <Link className="btn btn-soft nav-link-btn" to="/dashboard/inquiries">
-                        Review buyer requests
+                        Check incoming requests
+                      </Link>
+                      <Link className="btn btn-soft nav-link-btn" to="/dashboard/studio">
+                        Customize shop look (optional)
                       </Link>
                     </div>
                   </div>
 
                   <div className="panel">
-                    <h3>Conversion checklist</h3>
+                    <h3>Simple launch checklist</h3>
                     <ul className="checklist">
-                      <li>{profile.bio ? '✓' : '○'} Add a short bio</li>
-                      <li>{profile.story ? '✓' : '○'} Add your maker story</li>
-                      <li>{publishedCount > 0 ? '✓' : '○'} Publish at least one product</li>
+                      <li>{hasDescription ? '✓' : '○'} Add a short shop description</li>
+                      <li>{hasBanner ? '✓' : '○'} Upload a shop banner</li>
+                      <li>{hasPublishedProduct ? '✓' : '○'} Publish at least one product</li>
                       <li>{requests.length > 0 ? '✓' : '○'} Receive your first buyer request</li>
                     </ul>
                   </div>

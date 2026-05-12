@@ -5,12 +5,12 @@ import type { ChangeEvent, FormEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
-import { useArtisanProfile } from '../hooks/useArtisanProfile'
+import { useShop } from '../hooks/useShop'
 import { trackEvent } from '../lib/analytics'
 import {
   createProduct,
   deleteProduct,
-  fetchProductByIdForArtisan,
+  fetchProductByIdForShop,
   updateProduct,
   uploadProductImage,
 } from '../lib/craftlyApi'
@@ -22,6 +22,9 @@ type ProductFormState = {
   title: string
   priceHint: string
   description: string
+  shippingNote: string
+  supportNote: string
+  detailPointsText: string
   saveAsDraft: boolean
 }
 
@@ -29,6 +32,9 @@ const emptyForm: ProductFormState = {
   title: '',
   priceHint: '',
   description: '',
+  shippingNote: '',
+  supportNote: '',
+  detailPointsText: '',
   saveAsDraft: false,
 }
 
@@ -41,7 +47,7 @@ export function DashboardProductEditorPage() {
   const navigate = useNavigate()
   const { productId } = useParams()
   const isCreateMode = !productId || productId === 'new'
-  const { profile, isLoading: isProfileLoading } = useArtisanProfile()
+  const { shop, isLoading: isShopLoading } = useShop()
   const [formState, setFormState] = useState<ProductFormState>(emptyForm)
   const [productImages, setProductImages] = useState<ProductImageItem[]>([])
   const [thumbnailImageId, setThumbnailImageId] = useState<string | null>(null)
@@ -59,14 +65,14 @@ export function DashboardProductEditorPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!profile || isCreateMode || !productId) return
+    if (!shop || isCreateMode || !productId) return
 
     let isMounted = true
     const load = async () => {
       setIsLoadingProduct(true)
       setErrorMessage(null)
       try {
-        const product = await fetchProductByIdForArtisan(profile.id, productId)
+        const product = await fetchProductByIdForShop(shop.id, productId)
         if (!isMounted) return
         if (!product) {
           setErrorMessage('Product not found.')
@@ -77,6 +83,9 @@ export function DashboardProductEditorPage() {
           title: product.title,
           description: product.description ?? '',
           priceHint: product.price_hint ?? '',
+          shippingNote: product.shipping_note ?? '',
+          supportNote: product.support_note ?? '',
+          detailPointsText: (product.detail_points || []).join('\n'),
           saveAsDraft: product.status === 'draft',
         })
         const orderedImages = getOrderedProductImages(product)
@@ -99,7 +108,7 @@ export function DashboardProductEditorPage() {
     return () => {
       isMounted = false
     }
-  }, [isCreateMode, productId, profile])
+  }, [isCreateMode, productId, shop])
 
   useEffect(() => {
     if (activeCropFile || cropQueue.length === 0) return
@@ -128,8 +137,8 @@ export function DashboardProductEditorPage() {
     event.preventDefault()
     setErrorMessage(null)
 
-    if (!profile) {
-      setErrorMessage('Profile is required before adding products.')
+    if (!shop) {
+      setErrorMessage('Shop setup is required before adding products.')
       return
     }
 
@@ -153,14 +162,21 @@ export function DashboardProductEditorPage() {
       productImages.findIndex((image) => image.id === thumbnailImageId),
     )
     const status = formState.saveAsDraft ? 'draft' : 'published'
+    const detailPoints = formState.detailPointsText
+      .split('\n')
+      .map((point) => point.trim())
+      .filter(Boolean)
 
     setIsSaving(true)
     try {
       if (isCreateMode) {
-        await createProduct(profile.id, {
+        await createProduct(shop.id, {
           title: formState.title.trim(),
           description: formState.description.trim(),
           price_hint: formState.priceHint.trim(),
+          shipping_note: formState.shippingNote.trim(),
+          support_note: formState.supportNote.trim(),
+          detail_points: detailPoints,
           status,
           image_urls: productImages.map((image) => image.url),
           thumbnail_index: thumbnailIndex,
@@ -170,6 +186,9 @@ export function DashboardProductEditorPage() {
           title: formState.title.trim(),
           description: formState.description.trim(),
           price_hint: formState.priceHint.trim(),
+          shipping_note: formState.shippingNote.trim(),
+          support_note: formState.supportNote.trim(),
+          detail_points: detailPoints,
           status,
           image_urls: productImages.map((image) => image.url),
           thumbnail_index: thumbnailIndex,
@@ -233,13 +252,13 @@ export function DashboardProductEditorPage() {
   }
 
   const handleCropComplete = async () => {
-    if (!profile || !activeCropFile || !activeCropUrl || !croppedAreaPixels) return
+    if (!shop || !activeCropFile || !activeCropUrl || !croppedAreaPixels) return
 
     setIsUploadingImage(true)
     try {
       const croppedBlob = await getCroppedImageBlob(activeCropUrl, croppedAreaPixels, 'image/jpeg')
       const croppedFile = new File([croppedBlob], `cropped-${activeCropFile.name}`, { type: 'image/jpeg' })
-      const uploadedUrl = await uploadProductImage({ userId: profile.user_id, file: croppedFile })
+      const uploadedUrl = await uploadProductImage({ userId: shop.user_id, file: croppedFile })
       const nextImage: ProductImageItem = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         url: uploadedUrl,
@@ -283,7 +302,7 @@ export function DashboardProductEditorPage() {
     })
   }
 
-  if (isProfileLoading || isLoadingProduct) {
+  if (isShopLoading || isLoadingProduct) {
     return (
       <article className="page page-admin-content">
         <section className="admin-main">
@@ -298,7 +317,7 @@ export function DashboardProductEditorPage() {
       <section className="admin-main">
         <DashboardSectionHeader
           title={isCreateMode ? 'Add new product' : 'Edit product'}
-          description="Upload up to 5 images, reorder them, and pick a display image for your public shop."
+          description="Start with title, price hint, and one image. You can fine-tune visuals later."
           actions={
             <button className="btn btn-soft" type="button" onClick={() => navigate('/dashboard/products')}>
               Back to products
@@ -307,6 +326,7 @@ export function DashboardProductEditorPage() {
         />
 
         <form className="panel panel-form" onSubmit={handleSubmit}>
+          <p className="empty-state">Quick start: add details, one clear image, then publish.</p>
           <input
             type="text"
             placeholder="Product title"
@@ -315,7 +335,7 @@ export function DashboardProductEditorPage() {
           />
           <input
             type="text"
-            placeholder="Price hint (e.g. From $45)"
+            placeholder="Price hint (e.g. From INR 1200)"
             value={formState.priceHint}
             onChange={(event) => setFormState((prev) => ({ ...prev, priceHint: event.target.value }))}
           />
@@ -324,6 +344,24 @@ export function DashboardProductEditorPage() {
             rows={4}
             value={formState.description}
             onChange={(event) => setFormState((prev) => ({ ...prev, description: event.target.value }))}
+          ></textarea>
+          <input
+            type="text"
+            placeholder="Shipping note (e.g. Ships in 3 to 5 days)"
+            value={formState.shippingNote}
+            onChange={(event) => setFormState((prev) => ({ ...prev, shippingNote: event.target.value }))}
+          />
+          <input
+            type="text"
+            placeholder="Support note (e.g. DM on Instagram for queries)"
+            value={formState.supportNote}
+            onChange={(event) => setFormState((prev) => ({ ...prev, supportNote: event.target.value }))}
+          />
+          <textarea
+            placeholder="Options / highlights (one per line, e.g. violet)"
+            rows={4}
+            value={formState.detailPointsText}
+            onChange={(event) => setFormState((prev) => ({ ...prev, detailPointsText: event.target.value }))}
           ></textarea>
 
           <label>
@@ -334,39 +372,43 @@ export function DashboardProductEditorPage() {
               accept="image/*"
               multiple
               onChange={handleImageSelect}
-              disabled={!profile || isUploadingImage}
+              disabled={!shop || isUploadingImage}
             />
           </label>
-          <p className="empty-state">Drag cards to reorder. Select one thumbnail for shop cover.</p>
+          <p className="empty-state">Need only the basics? Upload one image and save.</p>
 
-          <div className="product-images-grid">
-            {productImages.map((image) => (
-              <article
-                key={image.id}
-                className="product-image-card"
-                draggable
-                onDragStart={() => setDraggingImageId(image.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => handleImageDrop(image.id)}
-              >
-                <img src={image.url} alt="Product upload" />
-                <div className="product-image-actions">
-                  <label>
-                    <input
-                      type="radio"
-                      name="product-thumbnail"
-                      checked={thumbnailImageId === image.id}
-                      onChange={() => setThumbnailImageId(image.id)}
-                    />
-                    Thumbnail
-                  </label>
-                  <button className="btn btn-soft" type="button" onClick={() => handleRemoveImage(image.id)}>
-                    Remove
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+          <details>
+            <summary>Advanced image options (reorder and choose thumbnail)</summary>
+            <p className="empty-state">Drag cards to reorder and choose one thumbnail for your shop cover.</p>
+            <div className="product-images-grid">
+              {productImages.map((image) => (
+                <article
+                  key={image.id}
+                  className="product-image-card"
+                  draggable
+                  onDragStart={() => setDraggingImageId(image.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => handleImageDrop(image.id)}
+                >
+                  <img src={image.url} alt="Product upload" />
+                  <div className="product-image-actions">
+                    <label>
+                      <input
+                        type="radio"
+                        name="product-thumbnail"
+                        checked={thumbnailImageId === image.id}
+                        onChange={() => setThumbnailImageId(image.id)}
+                      />
+                      Thumbnail
+                    </label>
+                    <button className="btn btn-soft" type="button" onClick={() => handleRemoveImage(image.id)}>
+                      Remove
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </details>
 
           <label className="draft-toggle-row">
             <input
@@ -380,7 +422,7 @@ export function DashboardProductEditorPage() {
           {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
 
           <div className="inline-actions">
-            <button className="btn btn-primary" type="submit" disabled={isSaving || !profile}>
+            <button className="btn btn-primary" type="submit" disabled={isSaving || !shop}>
               {isSaving ? 'Saving...' : actionLabel}
             </button>
             {!isCreateMode ? (

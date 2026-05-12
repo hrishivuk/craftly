@@ -3,64 +3,83 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DashboardSectionHeader } from '../components/dashboard/DashboardSectionHeader'
 import { useAuth } from '../auth/useAuth'
-import { fetchProfileByUserId, upsertProfile } from '../lib/craftlyApi'
+import { useShop } from '../hooks/useShop'
+import {
+  updateStorefrontStudioConfig,
+  uploadStorefrontImage,
+  upsertShop,
+} from '../lib/craftlyApi'
 import { toErrorMessage } from '../lib/errors'
 import { normalizeSlug } from '../lib/slug'
+import { getStorefrontStudioConfigFromShop } from '../lib/storefrontStudio'
 
-type ProfileFormState = {
+type ShopFormState = {
   slug: string
-  displayName: string
-  bio: string
-  story: string
+  shopName: string
+  description: string
 }
 
-export function DashboardProfilePage() {
+export function DashboardShopPage() {
   const { user } = useAuth()
+  const { shop, isLoading: isShopLoading, refreshShop } = useShop()
   const navigate = useNavigate()
-  const [formState, setFormState] = useState<ProfileFormState>({
+  const [formState, setFormState] = useState<ShopFormState>({
     slug: '',
-    displayName: '',
-    bio: '',
-    story: '',
+    shopName: '',
+    description: '',
   })
-  const [isLoading, setIsLoading] = useState(true)
+  const [heroHeadline, setHeroHeadline] = useState('')
+  const [shopBannerUrl, setShopBannerUrl] = useState('')
+  const [bannerUploadFile, setBannerUploadFile] = useState<File | null>(null)
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false)
+  const [bannerInputKey, setBannerInputKey] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!shop) return
+    setFormState({
+      slug: shop.slug,
+      shopName: shop.name,
+      description: shop.description ?? '',
+    })
+    const storefront = getStorefrontStudioConfigFromShop(shop)
+    setHeroHeadline(storefront.heroHeadline)
+    setShopBannerUrl(storefront.shopBannerUrl)
+  }, [shop])
 
-    let isMounted = true
-    const load = async () => {
-      setIsLoading(true)
-      setErrorMessage(null)
-
-      try {
-        const profile = await fetchProfileByUserId(user.id)
-        if (!isMounted) return
-
-        if (profile) {
-          setFormState({
-            slug: profile.slug,
-            displayName: profile.display_name,
-            bio: profile.bio ?? '',
-            story: profile.story ?? '',
-          })
-        }
-      } catch (error) {
-        if (!isMounted) return
-        setErrorMessage(toErrorMessage(error, 'Unable to load profile.'))
-      } finally {
-        if (isMounted) setIsLoading(false)
-      }
+  const handleUploadBanner = async () => {
+    if (!user) {
+      setErrorMessage('Please sign in before uploading images.')
+      return
+    }
+    const file = bannerUploadFile
+    if (!file) {
+      setErrorMessage('Choose a banner image first.')
+      return
     }
 
-    void load()
-    return () => {
-      isMounted = false
+    setErrorMessage(null)
+    setSuccessMessage(null)
+    setIsUploadingBanner(true)
+
+    try {
+      const publicUrl = await uploadStorefrontImage({
+        userId: user.id,
+        kind: 'banner',
+        file,
+      })
+      setShopBannerUrl(publicUrl)
+      setBannerUploadFile(null)
+      setBannerInputKey((prev) => prev + 1)
+      setSuccessMessage('Banner uploaded. Save shop changes to publish.')
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error, 'Unable to upload banner image right now.'))
+    } finally {
+      setIsUploadingBanner(false)
     }
-  }, [user])
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -68,41 +87,53 @@ export function DashboardProfilePage() {
     setSuccessMessage(null)
 
     if (!user) {
-      setErrorMessage('Please sign in before saving your profile.')
+      setErrorMessage('Please sign in before saving your shop.')
       return
     }
 
     const slug = normalizeSlug(formState.slug)
-    if (!slug || !formState.displayName.trim()) {
-      setErrorMessage('Display name and profile slug are required.')
+    if (!slug || !formState.shopName.trim()) {
+      setErrorMessage('Shop name and shop slug are required.')
+      return
+    }
+
+    if (!shopBannerUrl) {
+      setErrorMessage('Upload a banner image to complete setup.')
       return
     }
 
     setIsSaving(true)
     try {
-      const profile = await upsertProfile(user, {
+      const savedShop = await upsertShop(user, {
         slug,
-        display_name: formState.displayName.trim(),
-        bio: formState.bio.trim(),
-        story: formState.story.trim(),
+        name: formState.shopName.trim(),
+        description: formState.description.trim(),
+        onboarding_completed: true,
+      })
+      const currentStorefront = getStorefrontStudioConfigFromShop(savedShop)
+      await updateStorefrontStudioConfig(savedShop.id, {
+        ...currentStorefront,
+        heroHeadline: heroHeadline.trim() || currentStorefront.heroHeadline,
+        shopBannerUrl,
       })
       setFormState((prev) => ({
         ...prev,
-        slug: profile.slug,
+        slug: savedShop.slug,
       }))
-      setSuccessMessage('Profile saved. Your public shop is live.')
+      await refreshShop()
+      setSuccessMessage('Shop details saved and published.')
     } catch (error) {
-      setErrorMessage(toErrorMessage(error, 'Could not save profile.'))
+      setErrorMessage(toErrorMessage(error, 'Could not save shop details.'))
     } finally {
       setIsSaving(false)
     }
   }
 
-  if (isLoading) {
+  if (isShopLoading) {
     return (
       <article className="page page-admin-content">
         <section className="admin-main">
-          <p className="auth-state">Loading profile...</p>
+          <p className="auth-state">Loading shop details...</p>
         </section>
       </article>
     )
@@ -112,8 +143,8 @@ export function DashboardProfilePage() {
     <article className="page page-admin-content">
       <section className="admin-main">
         <DashboardSectionHeader
-          title="Profile & Story"
-          description="Shape buyer trust with a clear narrative and identity."
+          title="Edit shop"
+          description="Manage your shop identity and storefront essentials."
           actions={
             <button
               className="btn btn-soft"
@@ -127,18 +158,18 @@ export function DashboardProfilePage() {
 
         <form className="panel panel-form" onSubmit={handleSubmit}>
           <label>
-            <span>Display name</span>
+            <span>Shop name</span>
             <input
               type="text"
               placeholder="Terra Clay Studio"
-              value={formState.displayName}
+              value={formState.shopName}
               onChange={(event) =>
-                setFormState((prev) => ({ ...prev, displayName: event.target.value }))
+                setFormState((prev) => ({ ...prev, shopName: event.target.value }))
               }
             />
           </label>
           <label>
-            <span>Profile slug</span>
+            <span>Shop slug</span>
             <input
               type="text"
               placeholder="terra-clay-studio"
@@ -147,29 +178,61 @@ export function DashboardProfilePage() {
             />
           </label>
           <label>
-            <span>Short bio</span>
+            <span>Short description</span>
             <textarea
               rows={3}
-              placeholder="What do you make and for whom?"
-              value={formState.bio}
-              onChange={(event) => setFormState((prev) => ({ ...prev, bio: event.target.value }))}
+              placeholder="What do you craft and for whom?"
+              value={formState.description}
+              onChange={(event) => setFormState((prev) => ({ ...prev, description: event.target.value }))}
             />
           </label>
           <label>
-            <span>Your story</span>
-            <textarea
-              rows={5}
-              placeholder="Share your making philosophy and what your work means."
-              value={formState.story}
-              onChange={(event) =>
-                setFormState((prev) => ({ ...prev, story: event.target.value }))
-              }
+            <span>Hero headline</span>
+            <input
+              type="text"
+              placeholder="Handmade with heart and intention."
+              value={heroHeadline}
+              onChange={(event) => setHeroHeadline(event.target.value)}
             />
           </label>
+          <div className="media-upload-card">
+            <p className="media-upload-title">Shop banner image</p>
+            <input
+              id="shop-banner-upload"
+              key={bannerInputKey}
+              className="input-hidden"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null
+                setBannerUploadFile(file)
+              }}
+            />
+            <div className="media-upload-actions">
+              <label className="btn btn-soft" htmlFor="shop-banner-upload">
+                Choose file
+              </label>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={!bannerUploadFile || isUploadingBanner}
+                onClick={handleUploadBanner}
+              >
+                {isUploadingBanner ? 'Uploading banner...' : 'Upload banner'}
+              </button>
+            </div>
+            <p className="media-upload-file">{bannerUploadFile ? bannerUploadFile.name : 'No file selected'}</p>
+            {shopBannerUrl ? <p className="empty-state">Banner ready</p> : null}
+          </div>
+          <div className="inline-actions">
+            <button className="btn btn-soft" type="button" onClick={() => navigate('/dashboard/studio')}>
+              Open design studio (advanced)
+            </button>
+          </div>
           {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
           {successMessage ? <p className="form-success">{successMessage}</p> : null}
           <button className="btn btn-primary" type="submit" disabled={isSaving}>
-            {isSaving ? 'Saving...' : 'Save profile'}
+            {isSaving ? 'Saving...' : 'Save shop'}
           </button>
         </form>
       </section>

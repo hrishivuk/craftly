@@ -1,28 +1,17 @@
-import type { CSSProperties, FormEvent } from 'react'
+import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { trackEvent } from '../lib/analytics'
-import { createCustomRequest, fetchProductsByArtisanId, fetchPublicProfileBySlug } from '../lib/craftlyApi'
+import { fetchProductsByShopId, fetchPublicShopBySlug } from '../lib/craftlyApi'
 import { getProductThumbnail } from '../lib/productImages'
-import { getStorefrontStudioConfigFromProfile } from '../lib/storefrontStudio'
-import type { ArtisanProfileRow, ProductRow } from '../types/database'
+import { getStorefrontStudioConfigFromShop } from '../lib/storefrontStudio'
+import type { ProductRow, ShopRow } from '../types/database'
 
 export function ArtisanShopPage() {
   const { slug } = useParams()
-  const [profile, setProfile] = useState<ArtisanProfileRow | null>(null)
+  const [shop, setShop] = useState<ShopRow | null>(null)
   const [products, setProducts] = useState<ProductRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [requestState, setRequestState] = useState({
-    buyerName: '',
-    buyerEmail: '',
-    occasion: '',
-    budgetRange: '',
-    details: '',
-  })
-  const [requestError, setRequestError] = useState<string | null>(null)
-  const [requestSuccess, setRequestSuccess] = useState<string | null>(null)
-  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false)
 
   const fallbackName = useMemo(() => {
     if (!slug) return 'Terra Studio'
@@ -32,13 +21,9 @@ export function ArtisanShopPage() {
       .join(' ')
   }, [slug])
   const storefrontConfig = useMemo(() => {
-    return getStorefrontStudioConfigFromProfile(profile)
-  }, [profile])
-
-  const handleOpenContact = () => {
-    trackEvent('inquiry_started', { slug: slug ?? null })
-    document.getElementById('request-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+    return getStorefrontStudioConfigFromShop(shop)
+  }, [shop])
+  const activeTheme = storefrontConfig.tone
 
   useEffect(() => {
     if (!slug) return
@@ -48,20 +33,20 @@ export function ArtisanShopPage() {
       setIsLoading(true)
       setErrorMessage(null)
       try {
-        const artisanProfile = await fetchPublicProfileBySlug(slug)
-        if (!artisanProfile) {
+        const loadedShop = await fetchPublicShopBySlug(slug)
+        if (!loadedShop) {
           if (isMounted) {
-            setProfile(null)
+            setShop(null)
             setProducts([])
-            setErrorMessage('This artisan profile does not exist yet.')
+            setErrorMessage('This shop does not exist yet.')
           }
           return
         }
 
-        const listing = await fetchProductsByArtisanId(artisanProfile.id)
+        const listing = await fetchProductsByShopId(loadedShop.id)
         if (!isMounted) return
 
-        setProfile(artisanProfile)
+        setShop(loadedShop)
         setProducts(listing.filter((item) => item.status === 'published'))
       } catch (error) {
         if (!isMounted) return
@@ -77,51 +62,10 @@ export function ArtisanShopPage() {
     }
   }, [slug])
 
-  const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setRequestError(null)
-    setRequestSuccess(null)
-
-    if (!profile) {
-      setRequestError('Artisan profile is unavailable right now.')
-      return
-    }
-
-    if (!requestState.buyerName.trim() || !requestState.buyerEmail.trim() || !requestState.details.trim()) {
-      setRequestError('Name, email, and request details are required.')
-      return
-    }
-
-    setIsSubmittingRequest(true)
-    try {
-      await createCustomRequest({
-        artisan_id: profile.id,
-        buyer_name: requestState.buyerName.trim(),
-        buyer_email: requestState.buyerEmail.trim(),
-        occasion: requestState.occasion.trim(),
-        budget_range: requestState.budgetRange.trim(),
-        details: requestState.details.trim(),
-      })
-      setRequestState({
-        buyerName: '',
-        buyerEmail: '',
-        occasion: '',
-        budgetRange: '',
-        details: '',
-      })
-      setRequestSuccess('Request sent. The artisan can now review your idea.')
-      trackEvent('inquiry_submitted', { slug: slug ?? null })
-    } catch (error) {
-      setRequestError(error instanceof Error ? error.message : 'Unable to send your request.')
-    } finally {
-      setIsSubmittingRequest(false)
-    }
-  }
-
   if (isLoading) {
     return (
       <article className="page page-buyer">
-        <p className="auth-state">Loading artisan shop...</p>
+        <p className="auth-state">Loading shop...</p>
       </article>
     )
   }
@@ -137,17 +81,12 @@ export function ArtisanShopPage() {
   if (!slug) {
     return (
       <article className="page page-buyer">
-        <p className="form-error">Artisan profile not found.</p>
+        <p className="form-error">Shop not found.</p>
       </article>
     )
   }
 
-  const studioName = profile?.display_name || fallbackName
-  const avatarInitials = studioName
-    .split(' ')
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join('')
+  const studioName = shop?.name || fallbackName
 
   const shopThemeStyle = {
     '--shop-primary': storefrontConfig.primaryColor,
@@ -156,11 +95,11 @@ export function ArtisanShopPage() {
 
   return (
     <article
-      className={`page page-buyer page-shop-rework shop-page-tone-${storefrontConfig.tone} shop-v3-shell`}
+      className={`page page-buyer page-shop-rework shop-page-tone-${storefrontConfig.tone} shop-v3-shell shop-theme-${activeTheme}`}
       style={shopThemeStyle}
     >
       <section className={`shop-v3-hero shop-tone-${storefrontConfig.tone}`}>
-        <div className="shop-v3-hero-inner">
+        <div className="shop-v3-hero-top">
           <div
             className="shop-v3-banner"
             style={{
@@ -170,104 +109,43 @@ export function ArtisanShopPage() {
             }}
           >
             <div className="shop-v3-identity">
-              {storefrontConfig.shopAvatarUrl ? (
-                <img className="shop-v3-avatar-image" src={storefrontConfig.shopAvatarUrl} alt={studioName} />
-              ) : (
-                <div className="shop-v3-avatar">{avatarInitials || 'CS'}</div>
-              )}
-              <div>
-                <p className="eyebrow">Craftly artisan shop</p>
-                <h2>{studioName}</h2>
-                <p className="shop-v3-headline">{storefrontConfig.heroHeadline}</p>
-              </div>
+              <h2>{studioName}</h2>
+              <p className="shop-v3-headline">{storefrontConfig.heroHeadline}</p>
             </div>
           </div>
-          <div className="shop-v3-meta-row">
-            <p>{profile?.bio || 'Handcrafted work rooted in emotion, memory, and meaningful gifting.'}</p>
-            <button className="btn btn-primary" type="button" onClick={handleOpenContact}>
-              Contact artisan
-            </button>
-          </div>
+        </div>
+        <div className="shop-v3-meta-row">
+          <p>{shop?.description || 'Handcrafted work rooted in emotion, memory, and meaningful gifting.'}</p>
         </div>
       </section>
 
       <section className="catalog catalog-v2 shop-v3-products">
-        <div className="section-head">
-          <h3>Featured creations</h3>
-        </div>
-        <div className="product-grid">
+        <h3 className="shop-products-heading">Products</h3>
+        <div className={`product-grid product-grid-theme-${activeTheme}`}>
           {products.length === 0 ? (
-            <p className="empty-state">This artisan has no published products yet.</p>
+            <p className="empty-state">This shop has no published products yet.</p>
           ) : (
             products.map((product) => (
               <Link
-                className="product-card product-card-v2 shop-v3-product-card product-card-link"
+                className={`product-card product-card-v2 shop-v3-product-card product-card-link shop-card-theme-${activeTheme}`}
                 key={product.id}
                 to={`/a/${slug}/p/${product.id}`}
               >
-                {getProductThumbnail(product) ? (
-                  <img className="product-media-image" src={getProductThumbnail(product) || ''} alt={product.title} />
-                ) : (
-                  <div className="product-media shop-v3-product-media">Image coming soon</div>
-                )}
+                <div className="shop-card-media-wrap">
+                  {getProductThumbnail(product) ? (
+                    <img className="product-media-image" src={getProductThumbnail(product) || ''} alt={product.title} />
+                  ) : (
+                    <div className="product-media shop-v3-product-media">Image coming soon</div>
+                  )}
+                </div>
                 <div className="product-meta">
                   <p>{product.title}</p>
                   <span>{product.price_hint || 'Price on request'}</span>
-                  {product.description ? <small>{product.description}</small> : null}
                 </div>
               </Link>
             ))
           )}
         </div>
-      </section>
-
-      <section className="catalog catalog-v2 shop-request-section shop-v3-contact" id="request-form">
-        <form className="panel panel-form request-form shop-themed-form" onSubmit={handleRequestSubmit}>
-          <div className="section-head">
-            <h3>Contact artisan</h3>
-          </div>
-          <label>
-            <span>Your name</span>
-            <input
-              type="text"
-              value={requestState.buyerName}
-              onChange={(event) =>
-                setRequestState((prev) => ({ ...prev, buyerName: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            <span>Email</span>
-            <input
-              type="email"
-              value={requestState.buyerEmail}
-              onChange={(event) =>
-                setRequestState((prev) => ({ ...prev, buyerEmail: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            <span>What do you want made?</span>
-            <textarea
-              rows={4}
-              value={requestState.details}
-              onChange={(event) =>
-                setRequestState((prev) => ({ ...prev, details: event.target.value }))
-              }
-            ></textarea>
-          </label>
-          {requestError ? <p className="form-error">{requestError}</p> : null}
-          {requestSuccess ? <p className="form-success">{requestSuccess}</p> : null}
-          <button className="btn btn-primary" type="submit" disabled={isSubmittingRequest}>
-            {isSubmittingRequest ? 'Sending request...' : 'Send request'}
-          </button>
-        </form>
-
-        <aside className="panel shop-v3-contact-side">
-          <p className="eyebrow">Quick process</p>
-          <h4>Simple and direct</h4>
-          <p>You share your idea. The artisan replies with availability, timeline, and next steps.</p>
-        </aside>
       </section>
     </article>
   )

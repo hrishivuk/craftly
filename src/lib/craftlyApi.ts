@@ -1,26 +1,29 @@
 import type { User } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { ArtisanProfileRow, CustomRequestRow, ProductRow } from '../types/database'
+import type { CustomRequestRow, ProductRow, ShopRow } from '../types/database'
 import type { StorefrontStudioConfig } from './storefrontStudio'
 import { toStorefrontStudioUpdatePayload } from './storefrontStudio'
 
-export type ProfileInput = {
+export type ShopInput = {
   slug: string
-  display_name: string
-  bio: string
-  story: string
+  name: string
+  description: string
+  onboarding_completed?: boolean
 }
 
 export type ProductInput = {
   title: string
   description: string
   price_hint: string
+  shipping_note: string
+  support_note: string
+  detail_points: string[]
   status: 'draft' | 'published'
   image_urls: string[]
   thumbnail_index: number
 }
 
-type StorefrontMediaKind = 'avatar' | 'banner'
+type StorefrontMediaKind = 'banner'
 
 const STOREFRONT_MEDIA_BUCKET = 'storefront-media'
 const PRODUCT_MEDIA_BUCKET = 'product-media'
@@ -67,9 +70,9 @@ export async function uploadProductImage(params: {
   return data.publicUrl
 }
 
-export async function fetchProfileByUserId(userId: string): Promise<ArtisanProfileRow | null> {
+export async function fetchShopByUserId(userId: string): Promise<ShopRow | null> {
   const { data, error } = await supabase
-    .from('artisan_profiles')
+    .from('shops')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle()
@@ -78,9 +81,9 @@ export async function fetchProfileByUserId(userId: string): Promise<ArtisanProfi
   return data
 }
 
-export async function fetchPublicProfileBySlug(slug: string): Promise<ArtisanProfileRow | null> {
+export async function fetchPublicShopBySlug(slug: string): Promise<ShopRow | null> {
   const { data, error } = await supabase
-    .from('artisan_profiles')
+    .from('shops')
     .select('*')
     .eq('slug', slug)
     .maybeSingle()
@@ -89,17 +92,17 @@ export async function fetchPublicProfileBySlug(slug: string): Promise<ArtisanPro
   return data
 }
 
-export async function upsertProfile(user: User, input: ProfileInput): Promise<ArtisanProfileRow> {
+export async function upsertShop(user: User, input: ShopInput): Promise<ShopRow> {
   const payload = {
     user_id: user.id,
     slug: input.slug,
-    display_name: input.display_name,
-    bio: input.bio || null,
-    story: input.story || null,
+    name: input.name,
+    description: input.description || null,
+    onboarding_completed: Boolean(input.onboarding_completed),
   }
 
   const { data, error } = await supabase
-    .from('artisan_profiles')
+    .from('shops')
     .upsert(payload, {
       onConflict: 'user_id',
     })
@@ -110,39 +113,42 @@ export async function upsertProfile(user: User, input: ProfileInput): Promise<Ar
   return data
 }
 
-export async function fetchProductsByArtisanId(artisanId: string): Promise<ProductRow[]> {
+export async function fetchProductsByShopId(shopId: string): Promise<ProductRow[]> {
   const { data, error } = await supabase
     .from('products')
     .select('*')
-    .eq('artisan_id', artisanId)
+    .eq('shop_id', shopId)
     .order('created_at', { ascending: false })
 
   if (error) throw error
   return data
 }
 
-export async function fetchProductByIdForArtisan(
-  artisanId: string,
+export async function fetchProductByIdForShop(
+  shopId: string,
   productId: string,
 ): Promise<ProductRow | null> {
   const { data, error } = await supabase
     .from('products')
     .select('*')
     .eq('id', productId)
-    .eq('artisan_id', artisanId)
+    .eq('shop_id', shopId)
     .maybeSingle()
 
   if (error) throw error
   return data
 }
 
-export async function createProduct(artisanId: string, input: ProductInput): Promise<ProductRow> {
+export async function createProduct(shopId: string, input: ProductInput): Promise<ProductRow> {
   const thumbnailUrl = input.image_urls[input.thumbnail_index] || input.image_urls[0] || null
   const payload = {
-    artisan_id: artisanId,
+    shop_id: shopId,
     title: input.title,
     description: input.description || null,
     price_hint: input.price_hint || null,
+    shipping_note: input.shipping_note || null,
+    support_note: input.support_note || null,
+    detail_points: input.detail_points,
     status: input.status,
     image_url: thumbnailUrl,
     image_urls: input.image_urls,
@@ -164,6 +170,9 @@ export async function updateProduct(
     title: input.title,
     description: input.description || null,
     price_hint: input.price_hint || null,
+    shipping_note: input.shipping_note || null,
+    support_note: input.support_note || null,
+    detail_points: input.detail_points,
     status: input.status,
     image_url: thumbnailUrl,
     image_urls: input.image_urls,
@@ -187,7 +196,7 @@ export async function deleteProduct(productId: string): Promise<void> {
 }
 
 export async function createCustomRequest(params: {
-  artisan_id: string
+  shop_id: string
   buyer_name: string
   buyer_email: string
   occasion: string
@@ -195,7 +204,7 @@ export async function createCustomRequest(params: {
   details: string
 }) {
   const payload = {
-    artisan_id: params.artisan_id,
+    shop_id: params.shop_id,
     buyer_name: params.buyer_name,
     buyer_email: params.buyer_email,
     occasion: params.occasion || null,
@@ -207,12 +216,27 @@ export async function createCustomRequest(params: {
   if (error) throw error
 }
 
-export async function fetchCustomRequestsByArtisanId(artisanId: string): Promise<CustomRequestRow[]> {
+export async function fetchCustomRequestsByShopId(shopId: string): Promise<CustomRequestRow[]> {
   const { data, error } = await supabase
     .from('custom_requests')
     .select('*')
-    .eq('artisan_id', artisanId)
+    .eq('shop_id', shopId)
     .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function updateCustomRequestStatus(
+  requestId: string,
+  status: CustomRequestRow['status'],
+): Promise<CustomRequestRow> {
+  const { data, error } = await supabase
+    .from('custom_requests')
+    .update({ status })
+    .eq('id', requestId)
+    .select('*')
+    .single()
 
   if (error) throw error
   return data
@@ -221,32 +245,55 @@ export async function fetchCustomRequestsByArtisanId(artisanId: string): Promise
 export async function fetchPublishedProductBySlugAndId(
   slug: string,
   productId: string,
-): Promise<{ profile: ArtisanProfileRow; product: ProductRow } | null> {
-  const profile = await fetchPublicProfileBySlug(slug)
-  if (!profile) return null
+): Promise<{ shop: ShopRow; product: ProductRow } | null> {
+  const shop = await fetchPublicShopBySlug(slug)
+  if (!shop) return null
 
   const { data, error } = await supabase
     .from('products')
     .select('*')
     .eq('id', productId)
-    .eq('artisan_id', profile.id)
+    .eq('shop_id', shop.id)
     .eq('status', 'published')
     .maybeSingle()
 
   if (error) throw error
   if (!data) return null
 
-  return { profile, product: data }
+  return { shop, product: data }
 }
 
 export async function updateStorefrontStudioConfig(
-  profileId: string,
+  shopId: string,
   config: StorefrontStudioConfig,
-): Promise<ArtisanProfileRow> {
+): Promise<ShopRow> {
   const { data, error } = await supabase
-    .from('artisan_profiles')
+    .from('shops')
     .update(toStorefrontStudioUpdatePayload(config))
-    .eq('id', profileId)
+    .eq('id', shopId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateShop(
+  shopId: string,
+  updates: Partial<{
+    slug: string
+    name: string
+    description: string | null
+    onboarding_completed: boolean
+    shop_banner_url: string | null
+    shop_avatar_url: string | null
+    hero_headline: string | null
+  }>,
+): Promise<ShopRow> {
+  const { data, error } = await supabase
+    .from('shops')
+    .update(updates)
+    .eq('id', shopId)
     .select('*')
     .single()
 

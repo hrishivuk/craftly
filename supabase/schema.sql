@@ -1,11 +1,9 @@
-create table if not exists public.artisan_profiles (
+create table if not exists public.shops (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null unique,
   slug text not null unique,
-  display_name text not null,
-  bio text,
-  story text,
-  avatar_url text,
+  name text not null,
+  description text,
   hero_headline text,
   hero_subline text,
   trust_note text,
@@ -15,25 +13,93 @@ create table if not exists public.artisan_profiles (
   shop_banner_url text,
   primary_color text,
   secondary_color text,
+  onboarding_completed boolean not null default false,
   created_at timestamptz not null default now()
 );
 
-alter table public.artisan_profiles add column if not exists hero_headline text;
-alter table public.artisan_profiles add column if not exists hero_subline text;
-alter table public.artisan_profiles add column if not exists trust_note text;
-alter table public.artisan_profiles add column if not exists featured_message text;
-alter table public.artisan_profiles add column if not exists storefront_tone text;
-alter table public.artisan_profiles add column if not exists shop_avatar_url text;
-alter table public.artisan_profiles add column if not exists shop_banner_url text;
-alter table public.artisan_profiles add column if not exists primary_color text;
-alter table public.artisan_profiles add column if not exists secondary_color text;
+alter table public.shops add column if not exists hero_headline text;
+alter table public.shops add column if not exists hero_subline text;
+alter table public.shops add column if not exists trust_note text;
+alter table public.shops add column if not exists featured_message text;
+alter table public.shops add column if not exists storefront_tone text;
+alter table public.shops add column if not exists shop_avatar_url text;
+alter table public.shops add column if not exists shop_banner_url text;
+alter table public.shops add column if not exists primary_color text;
+alter table public.shops add column if not exists secondary_color text;
+alter table public.shops add column if not exists onboarding_completed boolean not null default false;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'artisan_profiles'
+  ) then
+    insert into public.shops (
+      id,
+      user_id,
+      slug,
+      name,
+      description,
+      hero_headline,
+      hero_subline,
+      trust_note,
+      featured_message,
+      storefront_tone,
+      shop_avatar_url,
+      shop_banner_url,
+      primary_color,
+      secondary_color,
+      onboarding_completed,
+      created_at
+    )
+    select
+      ap.id,
+      ap.user_id,
+      ap.slug,
+      ap.display_name,
+      coalesce(ap.bio, ap.story),
+      ap.hero_headline,
+      ap.hero_subline,
+      ap.trust_note,
+      ap.featured_message,
+      ap.storefront_tone,
+      ap.shop_avatar_url,
+      ap.shop_banner_url,
+      ap.primary_color,
+      ap.secondary_color,
+      (
+        ap.slug is not null
+        and ap.display_name is not null
+        and ap.shop_banner_url is not null
+        and length(trim(coalesce(ap.bio, ap.story, ''))) > 0
+      ),
+      ap.created_at
+    from public.artisan_profiles ap
+    on conflict (user_id) do update
+      set slug = excluded.slug,
+          name = excluded.name,
+          description = excluded.description,
+          hero_headline = excluded.hero_headline,
+          hero_subline = excluded.hero_subline,
+          trust_note = excluded.trust_note,
+          featured_message = excluded.featured_message,
+          storefront_tone = excluded.storefront_tone,
+          shop_avatar_url = excluded.shop_avatar_url,
+          shop_banner_url = excluded.shop_banner_url,
+          primary_color = excluded.primary_color,
+          secondary_color = excluded.secondary_color;
+  end if;
+end $$;
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
-  artisan_id uuid not null references public.artisan_profiles(id) on delete cascade,
+  shop_id uuid not null references public.shops(id) on delete cascade,
   title text not null,
   description text,
   price_hint text,
+  shipping_note text,
+  support_note text,
+  detail_points text[] not null default '{}',
   status text not null default 'draft' check (status in ('draft', 'published')),
   image_url text,
   image_urls text[] not null default '{}',
@@ -41,12 +107,66 @@ create table if not exists public.products (
   created_at timestamptz not null default now()
 );
 
+alter table public.products add column if not exists shop_id uuid;
 alter table public.products add column if not exists image_urls text[] not null default '{}';
 alter table public.products add column if not exists thumbnail_index integer not null default 0;
+alter table public.products add column if not exists shipping_note text;
+alter table public.products add column if not exists support_note text;
+alter table public.products add column if not exists detail_points text[] not null default '{}';
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'products' and column_name = 'artisan_id'
+  ) then
+    update public.products
+    set shop_id = artisan_id
+    where shop_id is null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'products_shop_id_fkey'
+  ) then
+    alter table public.products
+      add constraint products_shop_id_fkey
+      foreign key (shop_id) references public.shops(id) on delete cascade;
+  end if;
+end $$;
+
+drop policy if exists "Artisans can manage own products" on public.products;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'products_artisan_id_fkey'
+  ) then
+    alter table public.products drop constraint products_artisan_id_fkey;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'products' and column_name = 'shop_id'
+  ) and not exists (
+    select 1 from public.products where shop_id is null
+  ) then
+    alter table public.products alter column shop_id set not null;
+  end if;
+end $$;
+
+alter table public.products drop column if exists artisan_id;
 
 create table if not exists public.custom_requests (
   id uuid primary key default gen_random_uuid(),
-  artisan_id uuid not null references public.artisan_profiles(id) on delete cascade,
+  shop_id uuid not null references public.shops(id) on delete cascade,
   buyer_name text not null,
   buyer_email text not null,
   occasion text,
@@ -56,19 +176,73 @@ create table if not exists public.custom_requests (
   created_at timestamptz not null default now()
 );
 
-alter table public.artisan_profiles enable row level security;
+alter table public.custom_requests add column if not exists shop_id uuid;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'custom_requests' and column_name = 'artisan_id'
+  ) then
+    update public.custom_requests
+    set shop_id = artisan_id
+    where shop_id is null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'custom_requests_shop_id_fkey'
+  ) then
+    alter table public.custom_requests
+      add constraint custom_requests_shop_id_fkey
+      foreign key (shop_id) references public.shops(id) on delete cascade;
+  end if;
+end $$;
+
+drop policy if exists "Artisans can read own custom requests" on public.custom_requests;
+drop policy if exists "Artisans can update own custom requests" on public.custom_requests;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'custom_requests_artisan_id_fkey'
+  ) then
+    alter table public.custom_requests drop constraint custom_requests_artisan_id_fkey;
+  end if;
+end $$;
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'custom_requests' and column_name = 'shop_id'
+  ) and not exists (
+    select 1 from public.custom_requests where shop_id is null
+  ) then
+    alter table public.custom_requests alter column shop_id set not null;
+  end if;
+end $$;
+
+alter table public.custom_requests drop column if exists artisan_id;
+drop table if exists public.artisan_profiles;
+
+alter table public.shops enable row level security;
 alter table public.products enable row level security;
 alter table public.custom_requests enable row level security;
 
-drop policy if exists "Artisan profiles are readable by everyone" on public.artisan_profiles;
-create policy "Artisan profiles are readable by everyone"
-  on public.artisan_profiles
+drop policy if exists "Shops are readable by everyone" on public.shops;
+create policy "Shops are readable by everyone"
+  on public.shops
   for select
   using (true);
 
-drop policy if exists "Artisans can upsert own profile" on public.artisan_profiles;
-create policy "Artisans can upsert own profile"
-  on public.artisan_profiles
+drop policy if exists "Owners can manage own shops" on public.shops;
+create policy "Owners can manage own shops"
+  on public.shops
   for all
   to authenticated
   using (auth.uid() = user_id)
@@ -80,25 +254,25 @@ create policy "Products are readable by everyone"
   for select
   using (true);
 
-drop policy if exists "Artisans can manage own products" on public.products;
-create policy "Artisans can manage own products"
+drop policy if exists "Shop owners can manage own products" on public.products;
+create policy "Shop owners can manage own products"
   on public.products
   for all
   to authenticated
   using (
     exists (
       select 1
-      from public.artisan_profiles ap
-      where ap.id = products.artisan_id
-        and ap.user_id = auth.uid()
+      from public.shops s
+      where s.id = products.shop_id
+        and s.user_id = auth.uid()
     )
   )
   with check (
     exists (
       select 1
-      from public.artisan_profiles ap
-      where ap.id = products.artisan_id
-        and ap.user_id = auth.uid()
+      from public.shops s
+      where s.id = products.shop_id
+        and s.user_id = auth.uid()
     )
   );
 
@@ -108,17 +282,39 @@ create policy "Anyone can create custom request"
   for insert
   with check (true);
 
-drop policy if exists "Artisans can read own custom requests" on public.custom_requests;
-create policy "Artisans can read own custom requests"
+drop policy if exists "Shop owners can read own custom requests" on public.custom_requests;
+create policy "Shop owners can read own custom requests"
   on public.custom_requests
   for select
   to authenticated
   using (
     exists (
       select 1
-      from public.artisan_profiles ap
-      where ap.id = custom_requests.artisan_id
-        and ap.user_id = auth.uid()
+      from public.shops s
+      where s.id = custom_requests.shop_id
+        and s.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Shop owners can update own custom requests" on public.custom_requests;
+create policy "Shop owners can update own custom requests"
+  on public.custom_requests
+  for update
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.shops s
+      where s.id = custom_requests.shop_id
+        and s.user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1
+      from public.shops s
+      where s.id = custom_requests.shop_id
+        and s.user_id = auth.uid()
     )
   );
 
